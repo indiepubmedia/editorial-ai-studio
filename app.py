@@ -11,9 +11,15 @@ from datetime import datetime
 
 load_dotenv()
 
-# Setup client
-client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-UNSPLASH_KEY = os.getenv("UNSPLASH_ACCESS_KEY")
+# Setup client — funziona sia in locale (.env) che su Streamlit Cloud (st.secrets)
+try:
+    api_key = st.secrets["ANTHROPIC_API_KEY"]
+    UNSPLASH_KEY = st.secrets["UNSPLASH_ACCESS_KEY"]
+except:
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    UNSPLASH_KEY = os.getenv("UNSPLASH_ACCESS_KEY")
+
+client = anthropic.Anthropic(api_key=api_key)
 
 st.set_page_config(
     page_title="Editorial AI Studio — Industrial Tech",
