@@ -4,14 +4,16 @@ import requests
 import os
 from dotenv import load_dotenv
 from docx import Document
-from docx.shared import Inches, Pt, RGBColor
+from docx.shared import Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 import json
 from datetime import datetime
+from io import BytesIO
+from pathlib import Path
 
 load_dotenv()
 
-# Setup client — funziona sia in locale (.env) che su Streamlit Cloud (st.secrets)
+# ── API KEYS ──────────────────────────────────────────────────────────────────
 try:
     api_key = st.secrets["ANTHROPIC_API_KEY"]
     UNSPLASH_KEY = st.secrets["UNSPLASH_ACCESS_KEY"]
@@ -21,68 +23,50 @@ except:
 
 client = anthropic.Anthropic(api_key=api_key)
 
+# ── PAGE CONFIG ───────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Editorial AI Studio — Industrial Tech",
     page_icon="⚙️",
     layout="wide"
 )
 
-# CSS aggiornato con colori brand (giallo/nero)
 st.markdown("""
 <style>
     .stApp { background-color: #0d0d0d; }
-    .main-header { font-size: 1.2rem; color: #f5c400; font-weight: 600; }
-    .stButton > button { background-color: #f5c400; color: #000; border: none; border-radius: 4px; font-weight: bold; }
-    .stButton > button:hover { background-color: #d4a900; color: #000; }
-    .stForm { background: #1a1a1a; border-radius: 8px; padding: 1rem; }
+    .stButton > button { background-color: #f5c400; color: #000; border: none;
+        border-radius: 4px; font-weight: bold; }
+    .stButton > button:hover { background-color: #d4a900; }
     h2, h3 { color: #f5c400 !important; }
-    .stSelectbox label, .stMultiSelect label, .stTextInput label, .stTextArea label, .stSlider label { color: #ffffff !important; }
+    .stSelectbox label, .stMultiSelect label, .stTextInput label,
+    .stTextArea label, .stSlider label { color: #ffffff !important; }
     p, .stMarkdown { color: #dddddd; }
-    .stDivider { border-color: #f5c400; }
 </style>
 """, unsafe_allow_html=True)
 
-# Header con logo
-col_logo, col_title = st.columns([0.25, 0.75])
+# ── HEADER ────────────────────────────────────────────────────────────────────
+col_logo, col_title = st.columns([0.3, 0.7])
 with col_logo:
-    st.image("logo.png", width=280)
+    logo_path = Path(__file__).parent / "logo.png"
+    if logo_path.exists():
+        st.image(str(logo_path), width=300)
+    else:
+        st.markdown("### ⚙️ Industrial Tech")
 with col_title:
-    st.markdown('<div class="main-header">Editorial AI Studio</div>', unsafe_allow_html=True)
+    st.markdown("<h2 style='color:#f5c400;margin-top:20px'>Editorial AI Studio</h2>", unsafe_allow_html=True)
     st.markdown("<span style='color:#aaaaaa'>Sistema editoriale intelligente — powered by Claude AI</span>", unsafe_allow_html=True)
 
 st.divider()
 
-# CSS
-st.markdown("""
-<style>
-    .main-header { font-size: 2rem; font-weight: bold; color: #1a1a2e; }
-    .module-box { background: #f8f9fa; border-left: 4px solid #e63946; padding: 1rem; border-radius: 4px; margin: 1rem 0; }
-    .stButton > button { background-color: #e63946; color: white; border: none; border-radius: 4px; }
-    .stButton > button:hover { background-color: #c1121f; }
-</style>
-""", unsafe_allow_html=True)
+# ── SESSION STATE ─────────────────────────────────────────────────────────────
+for key in ["briefing", "temi_proposti", "temi_selezionati", "articoli_generati"]:
+    if key not in st.session_state:
+        st.session_state[key] = {} if key == "briefing" else []
 
-# Header
-st.markdown('<div class="main-header">⚙️ Editorial AI Studio</div>', unsafe_allow_html=True)
-st.markdown("**Industrial Tech Magazine** — Sistema editoriale intelligente")
-st.divider()
-
-# Session state init
-if "briefing" not in st.session_state:
-    st.session_state.briefing = {}
-if "temi_proposti" not in st.session_state:
-    st.session_state.temi_proposti = []
-if "temi_selezionati" not in st.session_state:
-    st.session_state.temi_selezionati = []
-if "articoli_generati" not in st.session_state:
-    st.session_state.articoli_generati = []
-
-# ─── MODULO 1: BRIEFING ───────────────────────────────────────────────────────
+# ── MODULO 1: BRIEFING ────────────────────────────────────────────────────────
 st.markdown("## 📋 Modulo 1 — Briefing del fascicolo")
 
 with st.form("briefing_form"):
     col1, col2 = st.columns(2)
-
     with col1:
         numero = st.text_input("Numero / Titolo fascicolo", placeholder="Es: Speciale Hannover Messe 2026")
         lingua = st.selectbox("Lingua principale", ["Italiano", "Inglese", "Bilingue (IT/EN)"])
@@ -93,7 +77,6 @@ with st.form("briefing_form"):
             "Sostenibilità & Green Energy", "Digitale & AI"
         ])
         fiere = st.text_input("Fiere / eventi collegati", placeholder="Es: Hannover Messe, SPS, Adipec")
-
     with col2:
         paesi = st.multiselect("Paesi di distribuzione", [
             "Italia", "Germania", "UK", "Francia", "Spagna",
@@ -106,7 +89,6 @@ with st.form("briefing_form"):
 
     n_articoli = st.slider("Numero articoli originali", 3, 8, 5)
     n_comunicati = st.slider("Numero comunicati da rielaborare", 5, 15, 10)
-
     submitted = st.form_submit_button("💾 Salva briefing e proponi temi →")
 
 if submitted:
@@ -117,11 +99,10 @@ if submitted:
     }
     st.success(f"✅ Briefing salvato per: **{numero}**")
 
-# ─── MODULO 2: PROPOSTA TEMI ─────────────────────────────────────────────────
+# ── MODULO 2: ARTICOLI ────────────────────────────────────────────────────────
 if st.session_state.briefing:
     st.divider()
     st.markdown("## ✍️ Modulo 2 — Proposta e generazione articoli")
-
     b = st.session_state.briefing
 
     if st.button("🧠 Genera proposta temi articoli"):
@@ -145,27 +126,24 @@ Per ognuno fornisci:
 5. FONTI: 2-3 trend/dati/eventi reali su cui basarsi
 6. LINGUA: IT o EN
 
-Rispondi in formato JSON array con questi campi esatti: titolo, occhiello, tema, angolo, fonti, lingua"""
+Rispondi SOLO con un JSON array con questi campi: titolo, occhiello, tema, angolo, fonti, lingua"""
 
             response = client.messages.create(
-                model="claude-sonnet-4-20250514",
+                model="claude-sonnet-4-5",
                 max_tokens=3000,
                 messages=[{"role": "user", "content": prompt}]
             )
-
             raw = response.content[0].text
             try:
                 start = raw.find('[')
                 end = raw.rfind(']') + 1
-                temi = json.loads(raw[start:end])
-                st.session_state.temi_proposti = temi
+                st.session_state.temi_proposti = json.loads(raw[start:end])
             except:
-                st.error("Errore nel parsing. Riprova.")
+                st.error("Errore nel parsing JSON. Riprova.")
 
     if st.session_state.temi_proposti:
         st.markdown("### Seleziona gli articoli da produrre:")
         selezionati = []
-
         for i, t in enumerate(st.session_state.temi_proposti):
             col1, col2 = st.columns([0.08, 0.92])
             with col1:
@@ -173,8 +151,8 @@ Rispondi in formato JSON array con questi campi esatti: titolo, occhiello, tema,
             with col2:
                 with st.expander(f"**{t.get('titolo', '')}** — {t.get('occhiello', '')}"):
                     st.markdown(f"**Tema:** {t.get('tema', '')}")
-                    st.markdown(f"**Angolo editoriale:** {t.get('angolo', '')}")
-                    st.markdown(f"**Fonti/trend:** {t.get('fonti', '')}")
+                    st.markdown(f"**Angolo:** {t.get('angolo', '')}")
+                    st.markdown(f"**Fonti:** {t.get('fonti', '')}")
                     st.markdown(f"**Lingua:** {t.get('lingua', 'IT')}")
             if sel:
                 selezionati.append(t)
@@ -197,33 +175,29 @@ Tema: {tema['tema']}
 Angolo: {tema['angolo']}
 Riferimenti: {tema['fonti']}
 Fascicolo: {st.session_state.briefing['numero']}
-Contesto: distribuito in {', '.join(st.session_state.briefing['paesi'])}
+Distribuzione: {', '.join(st.session_state.briefing['paesi'])}
 
 ISTRUZIONI:
-- Lunghezza: esattamente circa 4000 battute (spazi inclusi)
-- Struttura: lead di apertura forte → 3-4 sezioni con sottotitolo → conclusione con outlook
+- Lunghezza: circa 4000 battute (spazi inclusi)
+- Struttura: lead forte → 3-4 sezioni con sottotitolo → conclusione con outlook
 - Tono: tecnico ma accessibile, autorevole, giornalistico B2B
-- Inserisci dati, percentuali, citazioni plausibili da esperti del settore
-- NON usare frasi generiche o clichè da AI
-- Scrivi come un giornalista esperto del settore industriale
-
-Rispondi SOLO con il testo dell'articolo, con i sottotitoli marcati con ### """
+- Dati, percentuali, citazioni da esperti del settore
+- NON usare clichè da AI
+- Sottotitoli marcati con ###"""
 
                     resp = client.messages.create(
-                        model="claude-sonnet-4-20250514",
+                        model="claude-sonnet-4-5",
                         max_tokens=2000,
                         messages=[{"role": "user", "content": prompt_art}]
                     )
                     testo = resp.content[0].text
 
-                    # Cerca foto Unsplash
-                    foto_url = ""
-                    foto_credits = ""
+                    foto_url, foto_credits = "", ""
                     try:
-                        query = tema['titolo'].split()[0:3]
+                        query = " ".join(tema['titolo'].split()[:3]) + " industrial"
                         r = requests.get(
                             "https://api.unsplash.com/search/photos",
-                            params={"query": " ".join(query) + " industrial", "per_page": 1, "orientation": "landscape"},
+                            params={"query": query, "per_page": 1, "orientation": "landscape"},
                             headers={"Authorization": f"Client-ID {UNSPLASH_KEY}"}
                         )
                         data = r.json()
@@ -234,31 +208,25 @@ Rispondi SOLO con il testo dell'articolo, con i sottotitoli marcati con ### """
                         pass
 
                     articoli.append({
-                        "titolo": tema['titolo'],
-                        "occhiello": tema['occhiello'],
-                        "testo": testo,
-                        "lingua": tema.get('lingua', 'IT'),
-                        "foto_url": foto_url,
-                        "foto_credits": foto_credits
+                        "titolo": tema['titolo'], "occhiello": tema['occhiello'],
+                        "testo": testo, "lingua": tema.get('lingua', 'IT'),
+                        "foto_url": foto_url, "foto_credits": foto_credits
                     })
-
                 progress.progress((idx + 1) / len(selezionati))
 
             st.session_state.articoli_generati = articoli
 
-            # Genera .docx
             doc = Document()
-            style = doc.styles['Normal']
-            style.font.name = 'Georgia'
-            style.font.size = Pt(11)
+            doc.styles['Normal'].font.name = 'Georgia'
+            doc.styles['Normal'].font.size = Pt(11)
 
             title_par = doc.add_paragraph()
             title_par.alignment = WD_ALIGN_PARAGRAPH.CENTER
             run = title_par.add_run(f"Industrial Tech Magazine — {st.session_state.briefing['numero']}")
             run.font.size = Pt(16)
             run.font.bold = True
-            run.font.color.rgb = RGBColor(230, 57, 70)
-            doc.add_paragraph(f"Generato il {datetime.now().strftime('%d/%m/%Y %H:%M')}\n")
+            run.font.color.rgb = RGBColor(245, 196, 0)
+            doc.add_paragraph(f"Generato il {datetime.now().strftime('%d/%m/%Y %H:%M')}")
             doc.add_page_break()
 
             for art in articoli:
@@ -266,20 +234,17 @@ Rispondi SOLO con il testo dell'articolo, con i sottotitoli marcati con ### """
                 r = p.add_run(art['titolo'])
                 r.font.size = Pt(18)
                 r.font.bold = True
-                r.font.color.rgb = RGBColor(230, 57, 70)
+                r.font.color.rgb = RGBColor(245, 196, 0)
 
                 p2 = doc.add_paragraph()
                 r2 = p2.add_run(art['occhiello'])
                 r2.font.size = Pt(13)
                 r2.font.italic = True
-                r2.font.color.rgb = RGBColor(100, 100, 100)
 
                 doc.add_paragraph(f"[Lingua: {art['lingua']}]")
-
                 if art['foto_url']:
                     doc.add_paragraph(f"📷 FOTO: {art['foto_url']}")
-                    doc.add_paragraph(f"   Credits: {art['foto_credits']}")
-
+                    doc.add_paragraph(f"Credits: {art['foto_credits']}")
                 doc.add_paragraph("")
 
                 for riga in art['testo'].split('\n'):
@@ -288,27 +253,26 @@ Rispondi SOLO con il testo dell'articolo, con i sottotitoli marcati con ### """
                         r = p.add_run(riga.replace('### ', ''))
                         r.font.size = Pt(13)
                         r.font.bold = True
-                        r.font.color.rgb = RGBColor(26, 26, 46)
                     elif riga.strip():
                         doc.add_paragraph(riga)
-
                 doc.add_page_break()
 
+            buf = BytesIO()
+            doc.save(buf)
+            buf.seek(0)
             fname = f"articoli_{datetime.now().strftime('%Y%m%d_%H%M')}.docx"
-            fpath = f"C:/editorial-ai-studio/{fname}"
-            doc.save(fpath)
-
-            st.success(f"✅ File salvato: `{fpath}`")
+            st.download_button("📥 Scarica articoli .docx", buf, file_name=fname,
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
             st.balloons()
 
-# ─── MODULO 3: COMUNICATI ─────────────────────────────────────────────────────
+# ── MODULO 3: COMUNICATI ──────────────────────────────────────────────────────
 st.divider()
 st.markdown("## 📰 Modulo 3 — Rielaborazione comunicati stampa")
 
 comunicati_input = st.text_area(
     "Incolla qui i comunicati stampa (separali con --- su una riga)",
     height=250,
-    placeholder="Incolla il testo del comunicato 1...\n---\nIncolla il testo del comunicato 2...\n---"
+    placeholder="Incolla il testo del comunicato 1...\n---\nIncolla il testo del comunicato 2..."
 )
 
 col1, col2 = st.columns(2)
@@ -328,19 +292,19 @@ with col2:
 
 if comunicati_input and st.button("✂️ Rielabora comunicati → .docx"):
     comunicati = [c.strip() for c in comunicati_input.split('---') if c.strip()]
-    battute = {"Breve": 800, "Medio": 1800, "Lungo": 3500}
-    n_batt = battute.get(formato.split()[0], 1800)
+    battute_map = {"Breve": 800, "Medio": 1800, "Lungo": 3500}
+    n_batt = battute_map.get(formato.split()[0], 1800)
 
     doc2 = Document()
     p = doc2.add_paragraph()
     r = p.add_run(f"Comunicati rielaborati — {st.session_state.briefing.get('numero', 'fascicolo')}")
     r.font.size = Pt(16)
     r.font.bold = True
+    r.font.color.rgb = RGBColor(245, 196, 0)
     doc2.add_paragraph(f"Formato: {formato} | Tono: {tono}")
     doc2.add_page_break()
 
     progress2 = st.progress(0)
-
     for idx, com in enumerate(comunicati):
         with st.spinner(f"Rielaboro comunicato {idx+1}/{len(comunicati)}..."):
             prompt_com = f"""Sei un redattore di Industrial Tech Magazine. Rielabora questo comunicato stampa.
@@ -354,18 +318,17 @@ ISTRUZIONI:
 - Trasforma da comunicato aziendale a notizia redazionale
 - Aggiungi contesto di settore dove utile
 - Titolo accattivante + lead forte
-- NON sembrare un comunicato stampa, scrivi come redazione
-- Lingua: mantieni la stessa lingua del comunicato originale
+- NON sembrare un comunicato stampa
+- Mantieni la lingua originale del comunicato
 
 Rispondi con: TITOLO: ... poi a capo il testo."""
 
             resp = client.messages.create(
-                model="claude-sonnet-4-20250514",
+                model="claude-sonnet-4-5",
                 max_tokens=1500,
                 messages=[{"role": "user", "content": prompt_com}]
             )
             testo_com = resp.content[0].text
-
             lines = testo_com.strip().split('\n')
             titolo_com = lines[0].replace('TITOLO:', '').strip() if lines else f"Comunicato {idx+1}"
             corpo = '\n'.join(lines[1:]).strip()
@@ -374,19 +337,19 @@ Rispondi con: TITOLO: ... poi a capo il testo."""
             r = p.add_run(titolo_com)
             r.font.size = Pt(15)
             r.font.bold = True
-            r.font.color.rgb = RGBColor(230, 57, 70)
-
+            r.font.color.rgb = RGBColor(245, 196, 0)
             doc2.add_paragraph(f"[{formato} | {tono}]")
             doc2.add_paragraph("")
-
             for riga in corpo.split('\n'):
                 if riga.strip():
                     doc2.add_paragraph(riga)
-
             doc2.add_page_break()
-            progress2.progress((idx + 1) / len(comunicati))
+        progress2.progress((idx + 1) / len(comunicati))
 
+    buf2 = BytesIO()
+    doc2.save(buf2)
+    buf2.seek(0)
     fname2 = f"comunicati_{datetime.now().strftime('%Y%m%d_%H%M')}.docx"
-    fpath2 = f"C:/editorial-ai-studio/{fname2}"
-    doc2.save(fpath2)
-    st.success(f"✅ File salvato: `{fpath2}`")
+    st.download_button("📥 Scarica comunicati .docx", buf2, file_name=fname2,
+        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+    st.success("✅ Pronto!")
