@@ -295,17 +295,7 @@ with col3:
         "Italiano",
         "Inglese"
     ])
-        "Breve (mezza pagina ~800 battute)",
-        "Medio (una pagina ~1800 battute)",
-        "Lungo (due pagine ~3500 battute)"
-    ])
-with col2:
-    tono = st.selectbox("Tono redazionale", [
-        "Giornalistico neutro",
-        "Tecnico approfondito",
-        "Business & management",
-        "Innovazione & trend"
-    ])
+       
 
 if comunicati_input and st.button("✂️ Rielabora comunicati → .docx"):
     comunicati = [c.strip() for c in comunicati_input.split('---') if c.strip()]
