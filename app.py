@@ -275,9 +275,26 @@ comunicati_input = st.text_area(
     placeholder="Incolla il testo del comunicato 1...\n---\nIncolla il testo del comunicato 2..."
 )
 
-col1, col2 = st.columns(2)
+col1, col2, col3 = st.columns(3)
 with col1:
     formato = st.selectbox("Formato output", [
+        "Breve (mezza pagina ~800 battute)",
+        "Medio (una pagina ~1800 battute)",
+        "Lungo (due pagine ~3500 battute)"
+    ])
+with col2:
+    tono = st.selectbox("Tono redazionale", [
+        "Giornalistico neutro",
+        "Tecnico approfondito",
+        "Business & management",
+        "Innovazione & trend"
+    ])
+with col3:
+    lingua_com = st.selectbox("Lingua output", [
+        "Mantieni lingua originale",
+        "Italiano",
+        "Inglese"
+    ])
         "Breve (mezza pagina ~800 battute)",
         "Medio (una pagina ~1800 battute)",
         "Lungo (due pagine ~3500 battute)"
@@ -319,7 +336,7 @@ ISTRUZIONI:
 - Aggiungi contesto di settore dove utile
 - Titolo accattivante + lead forte
 - NON sembrare un comunicato stampa
-- Mantieni la lingua originale del comunicato
+- Lingua output: {lingua_com if lingua_com != "Mantieni lingua originale" else "mantieni la stessa lingua del comunicato originale"}
 
 Rispondi con: TITOLO: ... poi a capo il testo."""
 
